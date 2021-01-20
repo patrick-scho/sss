@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <fstream>
 
 #include <GL/glew.h>
 
@@ -19,86 +20,233 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-const char *vertexShaderSource = R"(
-#version 330 core
+struct model {
+  std::vector<float> vertices;
+  std::vector<GLuint> indices;
 
-layout (location = 0) in vec3 pos;
-layout (location = 1) in vec3 normal;
+  void draw() {
+    if (VAO == 0) initVAO();
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+  }
 
-out vec3 FragPos;
-out vec3 Normal;
+private:
+  void initVAO() {
+    GLuint VBO;
+    glGenBuffers(1, &VBO);
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
+    GLuint EBO;
+    glGenBuffers(1, &EBO);
 
-void main()
-{
-  gl_Position = projection * view * model * vec4(pos, 1.0);
-  FragPos = vec3(model * vec4(pos, 1));
-  Normal = normal;
+    glGenVertexArrays(1, &VAO);
+
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(),
+                vertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * indices.size(),
+                indices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(0));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(sizeof(float) * 3));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+  }
+  GLuint VAO = 0;
+};
+
+
+struct freecam {
+  glm::vec3 pos = glm::vec3(0, 0, -1);
+  glm::vec2 rot;
+
+  void update(sf::Window &window) {
+    int mouseDeltaX = sf::Mouse::getPosition(window).x - window.getSize().x / 2;
+    int mouseDeltaY = sf::Mouse::getPosition(window).y - window.getSize().y / 2;
+
+    rot.x += mouseDeltaX;
+    rot.y += mouseDeltaY;
+
+    forward = glm::rotate(glm::vec3(0, 0, 1), rot.y / angleFactor, glm::vec3(1, 0, 0));
+    forward = glm::rotate(forward, -rot.x / angleFactor, glm::vec3(0, 1, 0));
+
+    glm::vec3 left = glm::rotate(glm::vec3(0, 0, 1), -rot.x / angleFactor + glm::radians(90.0f), glm::vec3(0, 1, 0));
+
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift))
+      moveFactor = 200;
+    else
+      moveFactor = 20;
+
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+      pos += forward / moveFactor;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+      pos -= forward / moveFactor;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+      pos += left / moveFactor;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+      pos -= left / moveFactor;
+
+    limit();
+  }
+
+  void limit() {
+    rot.x = fmod(rot.x, glm::radians(360.0f) * angleFactor);
+    rot.y = fmod(rot.y, glm::radians(360.0f) * angleFactor);
+  }
+
+  glm::mat4 getViewMatrix() {
+    forward = glm::rotate(glm::vec3(0, 0, 1), rot.y / angleFactor, glm::vec3(1, 0, 0));
+    forward = glm::rotate(forward, -rot.x / angleFactor, glm::vec3(0, 1, 0));
+    glm::mat4 result = glm::lookAt(pos, pos + forward, up);
+    return result;
+  }
+
+private:
+  glm::vec3 forward;
+  glm::vec3 up = glm::vec3(0, 1, 0);
+
+  const float angleFactor = 200;
+  float moveFactor = 20;
+};
+
+
+struct arccam {
+  glm::vec2 rot;
+  float radius = 1;
+
+  void update(sf::Window &window) {
+    int mouseDeltaX = sf::Mouse::getPosition(window).x - window.getSize().x / 2;
+    int mouseDeltaY = sf::Mouse::getPosition(window).y - window.getSize().y / 2;
+
+    rot.x += mouseDeltaX;
+    rot.y += mouseDeltaY;
+
+    limit(-89, 89);
+  }
+
+  void limit(float minY, float maxY) {
+    float angleX = rot.x / angleFactor;
+    float angleY = rot.y / angleFactor;
+
+    rot.x = fmod(rot.x, glm::radians(360.0f) * angleFactor);
+
+    if (angleY > glm::radians(maxY))
+      rot.y = glm::radians(maxY) * angleFactor;
+    if (angleY < glm::radians(minY))
+      rot.y = glm::radians(minY) * angleFactor;
+  }
+
+  glm::mat4 getViewMatrix() {
+    float angle = rot.y / angleFactor;
+  
+    float camY = sin(angle) * exp(radius);
+    float camZ = cos(angle) * exp(radius);
+    glm::mat4 result = glm::lookAt(glm::vec3(0.0, camY, camZ), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    result = glm::rotate(result, rot.x / angleFactor, glm::vec3(0, 1, 0));
+
+    return result;
+  }
+
+private:
+  const float angleFactor = 200;
+};
+
+
+std::string readFile(std::string filename) {
+  std::ifstream ifs(filename, std::ios::binary);
+  ifs.seekg(0, ifs.end);
+  long length = ifs.tellg();
+  ifs.seekg(0, ifs.beg);
+  char *buffer = (char*)malloc(length);
+  ifs.read(buffer, length);
+  ifs.close();
+  std::string result(buffer);
+  free(buffer);
+  return result;
 }
-)";
 
-const char *fragmentShaderSource = R"(
-#version 330 core
-
-in vec3 FragPos;
-in vec3 Normal;
-
-out vec4 FragColor;
-
-uniform vec3 objectColor;
-uniform vec3 lightColor;
-uniform vec3 lightPos;
-
-void main()
-{
-  vec3 norm = normalize(Normal);
-  vec3 lightDir = normalize(lightPos - FragPos);
-
-  float diff = max(dot(norm, lightDir), 0.0);
-  vec3 diffuse = diff * lightColor;
-
-  float ambientStrength = 0.1;
-  vec3 ambient = ambientStrength * lightColor;
-
-  vec3 result = (ambient + diffuse) * objectColor;
-  FragColor = vec4(result, 1.0f);
-}
-)";
-
-std::vector<float> vertices;
-std::vector<GLuint> indices;
-
-glm::vec3 lightPos(1.2f, 5.0f, 2.0f);
-
-void load(const std::string &filename, std::vector<float> &vertices,
-          std::vector<GLuint> &indices) {
+model loadModel(const std::string &filename) {
   Assimp::Importer importer;
 
   const aiScene *scene = importer.ReadFile(
       filename, aiProcess_CalcTangentSpace | aiProcess_Triangulate |
                     aiProcess_SortByPType | aiProcess_GenSmoothNormals);
 
+  model result;
+
   for (int i = 0; i < scene->mMeshes[0]->mNumVertices; i++) {
     aiVector3D v = scene->mMeshes[0]->mVertices[i];
     aiVector3D n = scene->mMeshes[0]->mNormals[i];
-    vertices.push_back(v.x);
-    vertices.push_back(v.y);
-    vertices.push_back(v.z);
-    vertices.push_back(n.x);
-    vertices.push_back(n.y);
-    vertices.push_back(n.z);
+    result.vertices.push_back(v.x);
+    result.vertices.push_back(v.y);
+    result.vertices.push_back(v.z);
+    result.vertices.push_back(n.x);
+    result.vertices.push_back(n.y);
+    result.vertices.push_back(n.z);
   }
 
   for (int i = 0; i < scene->mMeshes[0]->mNumFaces; i++) {
     aiFace f = scene->mMeshes[0]->mFaces[i];
     for (int j = 0; j < f.mNumIndices; j++) {
-      indices.push_back(f.mIndices[j]);
+      result.indices.push_back(f.mIndices[j]);
     }
   }
+
+  return result;
 }
+
+GLuint compileShaders(const char *vertFilename, const char *fragFilename) {
+  GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
+  std::string vertSource = readFile(vertFilename);
+  const char *vertAddr = vertSource.c_str();
+  glShaderSource(vertShader, 1, &vertAddr, NULL);
+  glCompileShader(vertShader);
+
+  int success;
+  char infoLog[512];
+  glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
+    printf("Error compiling vertex shader: %s\n", infoLog);
+  }
+
+  GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+  std::string fragSource = readFile(fragFilename);
+  const char *fragAddr = fragSource.c_str();
+  glShaderSource(fragShader, 1, &fragAddr, NULL);
+  glCompileShader(fragShader);
+
+  glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
+    printf("Error compiling fragment shader: %s\n", infoLog);
+  }
+
+  // Link Shader Program
+
+  GLuint shaderProgram = glCreateProgram();
+  glAttachShader(shaderProgram, vertShader);
+  glAttachShader(shaderProgram, fragShader);
+  glLinkProgram(shaderProgram);
+
+  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+  if (!success) {
+    glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+    printf("Error linking shader program: %s\n", infoLog);
+  }
+
+  glDeleteShader(vertShader);
+  glDeleteShader(fragShader);
+
+  return shaderProgram;
+}
+
 
 int main() {
   // Window Setup
@@ -112,8 +260,6 @@ int main() {
   sf::RenderWindow window(sf::VideoMode(1600, 900), "Subsurface Scattering",
                     sf::Style::Default, settings);
   window.setVerticalSyncEnabled(true);
-  window.setMouseCursorGrabbed(true);
-  window.setMouseCursorVisible(false);
 
   ImGui::SFML::Init(window);
 
@@ -122,117 +268,36 @@ int main() {
   if (glewInit() != GLEW_OK) {
   }
 
-  load("models/Isotrop-upperjaw.ply", vertices, indices);
+  GLuint shaderProgram = compileShaders("shaders/vert.glsl", "shaders/frag.glsl");
 
-  // Compile Shaders
+  model m = loadModel("models/Isotrop-upperjaw.ply");
 
-  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-  glCompileShader(vertexShader);
+  arccam arcCam;
+  freecam freeCam;
+      
+  glm::vec3 lightPos(1.2f, 5.0f, 2.0f);
 
-  int success;
-  char infoLog[512];
-  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-  if (!success) {
-    glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-    printf("Error compiling vertex shader: %s\n", infoLog);
-  }
-
-  GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-  glCompileShader(fragmentShader);
-
-  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-  if (!success) {
-    glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-    printf("Error compiling fragment shader: %s\n", infoLog);
-  }
-
-  // Link Shader Program
-
-  GLuint shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vertexShader);
-  glAttachShader(shaderProgram, fragmentShader);
-  glLinkProgram(shaderProgram);
-
-  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-  if (!success) {
-    glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-    printf("Error linking shader program: %s\n", infoLog);
-  }
-
-  glDeleteShader(vertexShader);
-  glDeleteShader(fragmentShader);
-
-  // Create VBO
-
-  GLuint VBO;
-  glGenBuffers(1, &VBO);
-
-  // Create EBO
-
-  GLuint EBO;
-  glGenBuffers(1, &EBO);
-
-  // Create VAO
-
-  GLuint VAO;
-  glGenVertexArrays(1, &VAO);
-
-  glBindVertexArray(VAO);
-
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(),
-               vertices.data(), GL_STATIC_DRAW);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * indices.size(),
-               indices.data(), GL_STATIC_DRAW);
-
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(0));
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(sizeof(float) * 3));
-  glEnableVertexAttribArray(1);
-
-  glBindVertexArray(0);
-
-  // Perspective
+  // MVP
 
   glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, 0.01f, 0.01f));
 
-  struct {
-    float camX = 0;
-    float camZ = -5;
-    int mouseX = 0;
-    int mouseY = 0;
-  } arcball;
+  glm::mat4 view;
+
+  glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / window.getSize().y, 0.001f, 1000.0f);
 
   struct {
-    int mouseX = 0;
-    int mouseY = 0;
-  } freecam;
-
-  glm::vec3 camPos = glm::vec3(0, 0, -3);
-  glm::vec3 camForward = glm::vec3(0, 0, 1);
-  glm::vec3 camUp = glm::vec3(0, 1, 0);
-
-  glm::mat4 view =
-      glm::lookAt(glm::vec3(arcball.camX, 0.0, arcball.camZ), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-
-  glm::mat4 proj =
-      glm::perspective(glm::radians(45.0f), (float)window.getSize().x / window.getSize().y, 0.001f, 1000.0f);
-
-  struct {
-    bool catchMouse = false;
     bool wireframe = false;
     bool freecam = false;
-    float radius = 1.0f;
   } options;
 
   sf::Clock deltaClock;
 
+  bool prevMouse = false;
+
   bool running = true;
   while (running) {
+    // Events
+
     sf::Event event;
     while (window.pollEvent(event)) {
       ImGui::SFML::ProcessEvent(event);
@@ -247,57 +312,51 @@ int main() {
         case keys::Escape:
           running = false;
           break;
-        case keys::C:
-          options.catchMouse = !options.catchMouse;
+        case keys::F:
+          options.freecam = !options.freecam;
           break;
         case keys::R:
-          freecam.mouseX = freecam.mouseY = 0;
+          if (options.freecam) {
+            freeCam.pos = glm::vec3(0, 0, -1);
+            freeCam.rot = glm::vec2(0);
+          }
+          else {
+            arcCam.rot = glm::vec2(0);
+            arcCam.radius = 1;
+          }
           break;
         }
       } else if (event.type == sf::Event::EventType::MouseWheelScrolled) {
-        options.radius -= event.mouseWheelScroll.delta / 5.0f;
+        if (! options.freecam) {
+          arcCam.radius -= event.mouseWheelScroll.delta / 5.0f;
+        }
       }
     }
 
-    int mouseDeltaX = sf::Mouse::getPosition(window).x - window.getSize().x / 2;
-    int mouseDeltaY = sf::Mouse::getPosition(window).y - window.getSize().y / 2;
+    // Update
 
-    if (options.catchMouse) {
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Right)) {
+      window.setMouseCursorVisible(false);
+
+      if (prevMouse) {
+        if (options.freecam)
+          freeCam.update(window);
+        else
+          arcCam.update(window);
+      }
+
+
       sf::Mouse::setPosition(sf::Vector2i(
-        window.getSize().x / 2,
-        window.getSize().y / 2
-      ), window);
-
-      if (options.freecam) {
-        freecam.mouseX += mouseDeltaX;
-        freecam.mouseY += mouseDeltaY;
-
-        camForward = glm::rotate(glm::vec3(0, 0, 1), freecam.mouseY / 500.0f, glm::vec3(1, 0, 0));
-        camForward = glm::rotate(camForward, -freecam.mouseX / 500.0f, glm::vec3(0, 1, 0));
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
-          camPos += camForward / 20.0f;
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
-          camPos -= camForward / 20.0f;
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
-          glm::vec3 camLeft = glm::rotate(glm::vec3(0, 0, 1), -freecam.mouseX / 500.0f + glm::radians(90.0f), glm::vec3(0, 1, 0));
-          camPos += camLeft / 20.0f;
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
-          glm::vec3 camRight = glm::rotate(glm::vec3(0, 0, 1), -freecam.mouseX / 500.0f - glm::radians(90.0f), glm::vec3(0, 1, 0));
-          camPos += camRight / 20.0f;
-        }
-      } else {
-        if (sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
-          arcball.mouseX += mouseDeltaX;
-          arcball.mouseY += mouseDeltaY;
-        }
-      }
+          window.getSize().x / 2,
+          window.getSize().y / 2
+        ), window);  
+    } else {
+      window.setMouseCursorVisible(true);
     }
 
+    prevMouse = sf::Mouse::isButtonPressed(sf::Mouse::Right);
 
+    // Render
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -309,60 +368,47 @@ int main() {
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     glUseProgram(shaderProgram);
+    
+    if (options.freecam)
+      view = freeCam.getViewMatrix();
+    else
+      view = arcCam.getViewMatrix();
+    
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgram, "model"),
+      1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgram, "view"),
+      1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgram, "projection"),
+      1, GL_FALSE, glm::value_ptr(proj));
 
-    //rotate
-    //model = glm::rotate(model, glm::radians(0.2f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glUniform3f(
+      glGetUniformLocation(shaderProgram, "objectColor"),
+      1.0f, 0.5f, 0.31f);
+    glUniform3f(
+      glGetUniformLocation(shaderProgram, "lightColor"),
+      1.0f, 1.0f, 1.0f);
+    glUniform3fv(
+      glGetUniformLocation(shaderProgram, "lightPos"),
+      1, glm::value_ptr(lightPos));
 
-    if (options.freecam) {
-      view = glm::lookAt(camPos, camPos + camForward, camUp);
-    } else {
-      float angle = arcball.mouseY / 200.0f;
-      if (angle > glm::radians(89.0f)) {
-        angle = glm::radians(89.0f);
-        arcball.mouseY = angle * 200.0f;
-      }
-      if (angle < glm::radians(-89.0f)) {
-        angle = glm::radians(-89.0f);
-        arcball.mouseY = angle * 200.0f;
-      }
-      arcball.camX = sin(angle) * exp(options.radius);
-      arcball.camZ = cos(angle) * exp(options.radius);
-      view = glm::lookAt(glm::vec3(0.0, arcball.camX, arcball.camZ), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-      view = glm::rotate(view, arcball.mouseX / 100.0f, glm::vec3(0, 1, 0));
-    }
-
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1,
-                       GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE,
-                       glm::value_ptr(view));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1,
-                       GL_FALSE, glm::value_ptr(proj));
-
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.5f,
-                0.31f);
-    glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 1.0f,
-                1.0f);
-    glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
-
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
+    m.draw();
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     ImGui::SFML::Update(window, deltaClock.restart());
 
     ImGui::Begin("Options");
-    ImGui::LabelText("Cursor Locked", "%d", options.catchMouse);
     ImGui::Checkbox("Wireframe", &options.wireframe);
-    ImGui::Checkbox("Free Cam", &options.freecam);
+    ImGui::Checkbox("Free Cam (F)", &options.freecam);
     if (options.freecam) {
-      ImGui::LabelText("Position", "%f %f %f", camPos.x, camPos.y, camPos.z);
-      ImGui::LabelText("Forward", "%f %f %f", camForward.x, camForward.y, camForward.z);
-      ImGui::LabelText("Mouse", "%d %d", freecam.mouseX, freecam.mouseY);
+      ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
+      ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
     } else {
-      ImGui::LabelText("Rotation", "%f %f", arcball.camX, arcball.camZ);
-      ImGui::InputFloat("Radius", &options.radius);
+      ImGui::LabelText("Rotation", "%f %f", arcCam.rot.x, arcCam.rot.y);
+      ImGui::InputFloat("Radius", &arcCam.radius);
     }
     ImGui::End();
 
