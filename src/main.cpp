@@ -389,7 +389,7 @@ int main() {
 
     ImGui::Begin("Options");
     ImGui::Checkbox("Wireframe", &options.wireframe);
-    ImGui::Checkbox("Free Cam (F)", &options.freecam);
+    ImGui::Checkbox("Free Cam", &options.freecam);
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
       ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
