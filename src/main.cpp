@@ -64,7 +64,7 @@ private:
 
 struct freecam {
   glm::vec3 pos = glm::vec3(0, 0, -1);
-  glm::vec2 rot;
+  glm::vec2 rot = glm::vec2(0, 0);
 
   void update(sf::Window &window) {
     int mouseDeltaX = sf::Mouse::getPosition(window).x - window.getSize().x / 2;
@@ -108,7 +108,7 @@ struct freecam {
   }
 
 private:
-  glm::vec3 forward;
+  glm::vec3 forward = glm::vec3(0, 0, 1);
   glm::vec3 up = glm::vec3(0, 1, 0);
 
   const float angleFactor = 200;
@@ -117,7 +117,7 @@ private:
 
 
 struct arccam {
-  glm::vec2 rot;
+  glm::vec2 rot = glm::vec2(0, 0);
   float radius = 1;
 
   void update(sf::Window &window) {
@@ -312,19 +312,6 @@ int main() {
         case keys::Escape:
           running = false;
           break;
-        case keys::F:
-          options.freecam = !options.freecam;
-          break;
-        case keys::R:
-          if (options.freecam) {
-            freeCam.pos = glm::vec3(0, 0, -1);
-            freeCam.rot = glm::vec2(0);
-          }
-          else {
-            arcCam.rot = glm::vec2(0);
-            arcCam.radius = 1;
-          }
-          break;
         }
       } else if (event.type == sf::Event::EventType::MouseWheelScrolled) {
         if (! options.freecam) {
@@ -406,9 +393,17 @@ int main() {
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
       ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
+      if (ImGui::Button("Reset")) {
+        freeCam.pos = glm::vec3(0, 0, -1);
+        freeCam.rot = glm::vec2(0);
+      }
     } else {
       ImGui::LabelText("Rotation", "%f %f", arcCam.rot.x, arcCam.rot.y);
       ImGui::InputFloat("Radius", &arcCam.radius);
+      if (ImGui::Button("Reset")) {
+        arcCam.rot = glm::vec2(0);
+        arcCam.radius = 1;
+      }
     }
     ImGui::End();
 
