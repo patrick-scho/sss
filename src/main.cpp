@@ -51,10 +51,10 @@ private:
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * indices.size(),
                 indices.data(), GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(0));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(sizeof(float) * 3));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(0));
     glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(sizeof(float) * 3));
 
     glBindVertexArray(0);
   }
@@ -142,6 +142,16 @@ struct arccam {
       rot.y = glm::radians(minY) * angleFactor;
   }
 
+  glm::vec3 getPos() {
+    float angle = rot.y / angleFactor;
+  
+    float camY = sin(angle) * exp(radius);
+    float camZ = cos(angle) * exp(radius);
+
+    glm::vec3 result(0.0, camY, camZ);
+    return glm::rotate(result, -rot.x / angleFactor, glm::vec3(0, 1, 0));
+  }
+
   glm::mat4 getViewMatrix() {
     float angle = rot.y / angleFactor;
   
@@ -160,14 +170,10 @@ private:
 
 std::string readFile(std::string filename) {
   std::ifstream ifs(filename, std::ios::binary);
-  ifs.seekg(0, ifs.end);
-  long length = ifs.tellg();
-  ifs.seekg(0, ifs.beg);
-  char *buffer = (char*)malloc(length);
-  ifs.read(buffer, length);
-  ifs.close();
-  std::string result(buffer);
-  free(buffer);
+  std::string result, line;
+  while (std::getline(ifs, line))
+    result += line + "\n";
+
   return result;
 }
 
@@ -213,7 +219,7 @@ GLuint compileShaders(const char *vertFilename, const char *fragFilename) {
   glGetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(vertShader, 512, NULL, infoLog);
-    printf("Error compiling vertex shader: %s\n", infoLog);
+    printf("Error compiling vertex shader(%s): %s\n", vertFilename, infoLog);
   }
 
   GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -225,7 +231,7 @@ GLuint compileShaders(const char *vertFilename, const char *fragFilename) {
   glGetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(fragShader, 512, NULL, infoLog);
-    printf("Error compiling fragment shader: %s\n", infoLog);
+    printf("Error compiling fragment shader(%s): %s\n", fragFilename, infoLog);
   }
 
   // Link Shader Program
@@ -250,6 +256,8 @@ GLuint compileShaders(const char *vertFilename, const char *fragFilename) {
 
 int main() {
   // Window Setup
+
+  const int width = 1600, height = 900;
 
   sf::ContextSettings settings;
   settings.depthBits = 24;
@@ -284,6 +292,69 @@ int main() {
   glm::mat4 view;
 
   glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / window.getSize().y, 0.001f, 1000.0f);
+
+  // Framebuffer
+  GLuint fbo;
+  glGenFramebuffers(1, &fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  
+  GLuint renderTexture;
+  glGenTextures(1, &renderTexture);
+  glBindTexture(GL_TEXTURE_2D, renderTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  //glBindTexture(GL_TEXTURE_2D, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
+
+  GLuint rbo;
+  glGenRenderbuffers(1, &rbo);
+  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  //glBindRenderbuffer(GL_RENDERBUFFER, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+    printf("Successfully created framebuffer\n");
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  
+  GLuint screenShaderProgram = compileShaders("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl");
+  glUseProgram(screenShaderProgram);
+  glUniform1i(glGetUniformLocation(screenShaderProgram, "screenTexture"), 0);
+
+  // Screen VAO
+  
+  GLuint screenVBO;
+  glGenBuffers(1, &screenVBO);
+
+  GLuint screenVAO;
+  glGenVertexArrays(1, &screenVAO);
+
+  glBindVertexArray(screenVAO);
+
+  float screenVerts[] = {
+    -1.0f, +1.0f, +0.0f, +1.0f,
+    -1.0f, -1.0f, +0.0f, +0.0f,
+    +1.0f, -1.0f, +1.0f, +0.0f,
+ 
+    -1.0f, +1.0f, +0.0f, +1.0f,
+    +1.0f, -1.0f, +1.0f, +0.0f,
+    +1.0f, +1.0f, +1.0f, +1.0f,
+  };
+
+  glBindBuffer(GL_ARRAY_BUFFER, screenVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4,
+              screenVerts, GL_STATIC_DRAW);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(sizeof(float) * 2));
+
+  glBindVertexArray(0);
+
+  // Config
 
   struct {
     bool wireframe = false;
@@ -343,10 +414,11 @@ int main() {
 
     prevMouse = sf::Mouse::isButtonPressed(sf::Mouse::Right);
 
-    // Render
+    // Render to fbo
 
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     glEnable(GL_DEPTH_TEST);
 
     if (options.wireframe)
@@ -380,10 +452,26 @@ int main() {
     glUniform3fv(
       glGetUniformLocation(shaderProgram, "lightPos"),
       1, glm::value_ptr(lightPos));
+    glUniform3fv(
+      glGetUniformLocation(shaderProgram, "viewPos"),
+      1, glm::value_ptr(options.freecam ? freeCam.pos : arcCam.getPos()));
 
     m.draw();
+
+    // Render fbo to screen
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glUseProgram(screenShaderProgram);
+
+    glBindVertexArray(screenVAO);
+    glBindTexture(GL_TEXTURE_2D, renderTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 
     ImGui::SFML::Update(window, deltaClock.restart());
 
@@ -411,6 +499,8 @@ int main() {
 
     window.display();
   }
+
+  glDeleteFramebuffers(1, &fbo);
 
   return 0;
 }
