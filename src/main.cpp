@@ -389,7 +389,7 @@ int main() {
 
     ImGui::Begin("Options");
     ImGui::Checkbox("Wireframe", &options.wireframe);
-    ImGui::Checkbox("Free Cam (F)", &options.freecam);
+    ImGui::Checkbox("Free Cam", &options.freecam);
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
       ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
@@ -399,7 +399,7 @@ int main() {
       }
     } else {
       ImGui::LabelText("Rotation", "%f %f", arcCam.rot.x, arcCam.rot.y);
-      ImGui::InputFloat("Radius", &arcCam.radius);
+      ImGui::DragFloat("Radius", &arcCam.radius, 0.01f, -1.0f, 1.0f);
       if (ImGui::Button("Reset")) {
         arcCam.rot = glm::vec2(0);
         arcCam.radius = 1;
