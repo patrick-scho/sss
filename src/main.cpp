@@ -304,6 +304,8 @@ int main() {
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   //glBindTexture(GL_TEXTURE_2D, 0);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
 
@@ -359,6 +361,8 @@ int main() {
   struct {
     bool wireframe = false;
     bool freecam = false;
+    bool sssss = false;
+    int N = 2;
   } options;
 
   sf::Clock deltaClock;
@@ -468,6 +472,9 @@ int main() {
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(screenShaderProgram);
 
+    glUniform1i(glGetUniformLocation(screenShaderProgram, "applySSSSS"), options.sssss);
+    glUniform1i(glGetUniformLocation(screenShaderProgram, "N"), options.N);
+
     glBindVertexArray(screenVAO);
     glBindTexture(GL_TEXTURE_2D, renderTexture);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -478,6 +485,10 @@ int main() {
     ImGui::Begin("Options");
     ImGui::Checkbox("Wireframe", &options.wireframe);
     ImGui::Checkbox("Free Cam", &options.freecam);
+    ImGui::Checkbox("SSSSS", &options.sssss);
+    if (options.sssss) {
+      ImGui::DragInt("N", &options.N, 0.05f, 1, 16);
+    }
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
       ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
