@@ -1,0 +1,24 @@
+{
+  "C_Cpp.default.includePath": [
+    "C:/prg/cpp/libs/glm",
+    "C:/prg/cpp/libs/glew-2.1.0/include",
+    "C:/prg/cpp/libs/SFML-2.5.1/include",
+    "C:/prg/cpp/libs/imgui",
+    "C:/prg/cpp/libs/imgui-sfml",
+    "C:/prg/cpp/libs/assimp-5.0.1/include",
+    "C:/prg/cpp/libs/assimp-5.0.1/build/include",
+  ],
+  "files.associations": {
+    "*.t": "lua",
+    "cmath": "cpp",
+    "istream": "cpp",
+    "array": "cpp",
+    "initializer_list": "cpp",
+    "type_traits": "cpp",
+    "vector": "cpp",
+    "xstring": "cpp",
+    "xtree": "cpp",
+    "xutility": "cpp",
+    "*.glsl": "c"
+  }
+}
