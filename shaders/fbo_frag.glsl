@@ -17,7 +17,7 @@ void main()
         FragColor = texture(shadowmapTexture, TexCoords);
     }
     // stencil buffer
-    else if (renderState == 1 || texture(irradianceTexture, TexCoords).rgb == vec3(0, 0, 0)) {
+    else if (renderState == 1) {
         FragColor = texture(irradianceTexture, TexCoords);
     }
     else if (renderState == 2) {
@@ -26,9 +26,9 @@ void main()
     else if (renderState == 3) {
         vec4 result = vec4(0, 0, 0, 1);
         for (int i = 0; i < 13; i++) {
-            float oneX = 1.0/screenWidth;
-            float oneY = 1.0/screenHeight;
-            vec4 sample = texture(irradianceTexture, TexCoords + samplePositions[i] * vec2(oneX, oneY));
+            vec2 sampleCoords = TexCoords + samplePositions[i] * vec2(1.0/screenWidth, 1.0/screenHeight);
+            vec4 sample = texture(irradianceTexture, sampleCoords)
+                        * texture(shadowmapTexture, sampleCoords);
             vec4 weight = vec4(sampleWeights[i], 1);
             result += sample * weight;
         }
