@@ -5,6 +5,8 @@ in vec3 Normal;
 
 out vec4 FragColor;
 
+uniform sampler2D shadowmapTexture;
+
 uniform vec3 objectColor;
 uniform vec3 lightColor;
 uniform vec3 lightPos;

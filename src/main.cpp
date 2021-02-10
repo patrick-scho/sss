@@ -20,6 +20,46 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+/*
+
+TODO:
+- ShadowMap to fbo
+- Save Depth to fbo
+
+*/
+
+float samplePositions[] = {
+  0.000000f,  0.000000f,
+  1.633992f,  0.036795f,
+  0.177801f,  1.717593f,
+  -0.194906f,  0.091094f,
+  -0.239737f, -0.220217f,
+  -0.003530f, -0.118219f,
+  1.320107f, -0.181542f,
+  5.970690f,  0.253378f,
+  -1.089250f,  4.958349f,
+  -4.015465f,  4.156699f,
+  -4.063099f, -4.110150f,
+  -0.638605f, -6.297663f,
+  2.542348f, -3.245901f
+};
+
+float sampleWeights[] = {
+  0.220441f,  0.487000f, 0.635000f,
+  0.076356f,  0.064487f, 0.039097f,
+  0.116515f,  0.103222f, 0.064912f,
+  0.064844f,  0.086388f, 0.062272f,
+  0.131798f,  0.151695f, 0.103676f,
+  0.025690f,  0.042728f, 0.033003f,
+  0.048593f,  0.064740f, 0.046131f,
+  0.048092f,  0.003042f, 0.000400f,
+  0.048845f,  0.005406f, 0.001222f,
+  0.051322f,  0.006034f, 0.001420f,
+  0.061428f,  0.009152f, 0.002511f,
+  0.030936f,  0.002868f, 0.000652f,
+  0.073580f,  0.023239f, 0.009703f
+};
+
 struct model {
   std::vector<float> vertices;
   std::vector<GLuint> indices;
@@ -254,6 +294,77 @@ GLuint compileShaders(const char *vertFilename, const char *fragFilename) {
 }
 
 
+struct framebuffer {
+  framebuffer(const char *vertFilename, const char *fragFilename, int width, int height) {
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    
+    glGenTextures(1, &renderTexture);
+    glBindTexture(GL_TEXTURE_2D, renderTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    //glBindTexture(GL_TEXTURE_2D, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
+
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    //glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+      printf("Successfully created framebuffer\n");
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    screenShaderProgram = compileShaders(vertFilename, fragFilename);
+    glUseProgram(screenShaderProgram);
+    glUniform1i(glGetUniformLocation(screenShaderProgram, "screenTexture"), 0);
+
+    // Screen VAO
+    
+    glGenBuffers(1, &screenVBO);
+
+    glGenVertexArrays(1, &screenVAO);
+
+    glBindVertexArray(screenVAO);
+
+    float screenVerts[] = {
+      -1.0f, +1.0f, +0.0f, +1.0f,
+      -1.0f, -1.0f, +0.0f, +0.0f,
+      +1.0f, -1.0f, +1.0f, +0.0f,
+  
+      -1.0f, +1.0f, +0.0f, +1.0f,
+      +1.0f, -1.0f, +1.0f, +0.0f,
+      +1.0f, +1.0f, +1.0f, +1.0f,
+    };
+
+    glBindBuffer(GL_ARRAY_BUFFER, screenVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4,
+                screenVerts, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(0));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(sizeof(float) * 2));
+
+    glBindVertexArray(0);
+  }
+  ~framebuffer() {
+    glDeleteFramebuffers(1, &fbo);
+  }
+  
+  GLuint fbo;
+  GLuint renderTexture;
+  GLuint rbo;
+  GLuint screenShaderProgram;
+  GLuint screenVBO;
+  GLuint screenVAO;
+};
+
 int main() {
   // Window Setup
 
@@ -276,7 +387,8 @@ int main() {
   if (glewInit() != GLEW_OK) {
   }
 
-  GLuint shaderProgram = compileShaders("shaders/vert.glsl", "shaders/frag.glsl");
+  GLuint shaderProgramShadowmap = compileShaders("shaders/vert.glsl", "shaders/frag_shadowmap.glsl");
+  GLuint shaderProgramIrradiance = compileShaders("shaders/vert.glsl", "shaders/frag_irradiance.glsl");
 
   model m = loadModel("models/Isotrop-upperjaw.ply");
 
@@ -294,75 +406,16 @@ int main() {
   glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / window.getSize().y, 0.001f, 1000.0f);
 
   // Framebuffer
-  GLuint fbo;
-  glGenFramebuffers(1, &fbo);
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-  
-  GLuint renderTexture;
-  glGenTextures(1, &renderTexture);
-  glBindTexture(GL_TEXTURE_2D, renderTexture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  //glBindTexture(GL_TEXTURE_2D, 0);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderTexture, 0);
-
-  GLuint rbo;
-  glGenRenderbuffers(1, &rbo);
-  glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-  //glBindRenderbuffer(GL_RENDERBUFFER, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
-
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
-    printf("Successfully created framebuffer\n");
-  }
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  
-  GLuint screenShaderProgram = compileShaders("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl");
-  glUseProgram(screenShaderProgram);
-  glUniform1i(glGetUniformLocation(screenShaderProgram, "screenTexture"), 0);
-
-  // Screen VAO
-  
-  GLuint screenVBO;
-  glGenBuffers(1, &screenVBO);
-
-  GLuint screenVAO;
-  glGenVertexArrays(1, &screenVAO);
-
-  glBindVertexArray(screenVAO);
-
-  float screenVerts[] = {
-    -1.0f, +1.0f, +0.0f, +1.0f,
-    -1.0f, -1.0f, +0.0f, +0.0f,
-    +1.0f, -1.0f, +1.0f, +0.0f,
- 
-    -1.0f, +1.0f, +0.0f, +1.0f,
-    +1.0f, -1.0f, +1.0f, +0.0f,
-    +1.0f, +1.0f, +1.0f, +1.0f,
-  };
-
-  glBindBuffer(GL_ARRAY_BUFFER, screenVBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4,
-              screenVerts, GL_STATIC_DRAW);
-
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(0));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(sizeof(float) * 2));
-
-  glBindVertexArray(0);
+  framebuffer fb_shadowmap("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl", width, height);
+  framebuffer fb_irradiance("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl", width, height);
 
   // Config
 
   struct {
     bool wireframe = false;
     bool freecam = false;
-    bool sssss = false;
-    int N = 2;
+    int renderState = 0;
+    float color[3] = { 0.7f, 0.4f, 0.4f };
   } options;
 
   sf::Clock deltaClock;
@@ -418,10 +471,10 @@ int main() {
 
     prevMouse = sf::Mouse::isButtonPressed(sf::Mouse::Right);
 
-    // Render to fbo
+    // Render Shadowmap
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glBindFramebuffer(GL_FRAMEBUFFER, fb_shadowmap.fbo);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
@@ -430,7 +483,7 @@ int main() {
     else
       glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    glUseProgram(shaderProgram);
+    glUseProgram(shaderProgramShadowmap);
     
     if (options.freecam)
       view = freeCam.getViewMatrix();
@@ -438,27 +491,66 @@ int main() {
       view = arcCam.getViewMatrix();
     
     glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgram, "model"),
+      glGetUniformLocation(shaderProgramShadowmap, "model"),
       1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgram, "view"),
+      glGetUniformLocation(shaderProgramShadowmap, "view"),
       1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgram, "projection"),
+      glGetUniformLocation(shaderProgramShadowmap, "projection"),
       1, GL_FALSE, glm::value_ptr(proj));
 
+    glUniform3fv(
+      glGetUniformLocation(shaderProgramShadowmap, "lightPos"),
+      1, glm::value_ptr(lightPos));
+
+    m.draw();
+
+    // Render irradiance
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fb_irradiance.fbo);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+
+    if (options.wireframe)
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else
+      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    glUseProgram(shaderProgramIrradiance);
+    
+    if (options.freecam)
+      view = freeCam.getViewMatrix();
+    else
+      view = arcCam.getViewMatrix();
+    
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramIrradiance, "model"),
+      1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramIrradiance, "view"),
+      1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramIrradiance, "projection"),
+      1, GL_FALSE, glm::value_ptr(proj));
+
+    glUniform3fv(
+      glGetUniformLocation(shaderProgramIrradiance, "objectColor"),
+      1, options.color);
     glUniform3f(
-      glGetUniformLocation(shaderProgram, "objectColor"),
-      1.0f, 0.5f, 0.31f);
-    glUniform3f(
-      glGetUniformLocation(shaderProgram, "lightColor"),
+      glGetUniformLocation(shaderProgramIrradiance, "lightColor"),
       1.0f, 1.0f, 1.0f);
     glUniform3fv(
-      glGetUniformLocation(shaderProgram, "lightPos"),
+      glGetUniformLocation(shaderProgramIrradiance, "lightPos"),
       1, glm::value_ptr(lightPos));
     glUniform3fv(
-      glGetUniformLocation(shaderProgram, "viewPos"),
+      glGetUniformLocation(shaderProgramIrradiance, "viewPos"),
       1, glm::value_ptr(options.freecam ? freeCam.pos : arcCam.getPos()));
+      
+    glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "shadowmapTexture"), 0);
+    glActiveTexture(GL_TEXTURE0 + 0);
+    glBindTexture(GL_TEXTURE_2D, fb_shadowmap.renderTexture);
 
     m.draw();
 
@@ -470,13 +562,21 @@ int main() {
     glDisable(GL_DEPTH_TEST);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(screenShaderProgram);
+    glUseProgram(fb_irradiance.screenShaderProgram);
 
-    glUniform1i(glGetUniformLocation(screenShaderProgram, "applySSSSS"), options.sssss);
-    glUniform1i(glGetUniformLocation(screenShaderProgram, "N"), options.N);
+    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "screenWidth"), window.getSize().x);
+    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "screenHeight"), window.getSize().y);
+    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "renderState"), options.renderState);
+    glUniform2fv(glGetUniformLocation(fb_irradiance.screenShaderProgram, "samplePositions"), 13, samplePositions);
+    glUniform3fv(glGetUniformLocation(fb_irradiance.screenShaderProgram, "sampleWeights"), 13, sampleWeights);
 
-    glBindVertexArray(screenVAO);
-    glBindTexture(GL_TEXTURE_2D, renderTexture);
+    glBindVertexArray(fb_irradiance.screenVAO);
+    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "shadowmapTexture"), 0);
+    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "irradianceTexture"), 1);
+    glActiveTexture(GL_TEXTURE0 + 0);
+    glBindTexture(GL_TEXTURE_2D, fb_shadowmap.renderTexture);
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_2D, fb_irradiance.renderTexture);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
@@ -485,10 +585,8 @@ int main() {
     ImGui::Begin("Options");
     ImGui::Checkbox("Wireframe", &options.wireframe);
     ImGui::Checkbox("Free Cam", &options.freecam);
-    ImGui::Checkbox("SSSSS", &options.sssss);
-    if (options.sssss) {
-      ImGui::DragInt("N", &options.N, 0.05f, 1, 16);
-    }
+    ImGui::InputInt("Render State", &options.renderState);
+    ImGui::InputFloat3("Color", options.color, 2);
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
       ImGui::LabelText("Rotation", "%f %f", freeCam.rot.x, freeCam.rot.y);
@@ -510,8 +608,6 @@ int main() {
 
     window.display();
   }
-
-  glDeleteFramebuffers(1, &fbo);
 
   return 0;
 }
