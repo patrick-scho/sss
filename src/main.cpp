@@ -65,6 +65,24 @@ float sampleWeights[] = {
   0.073580f,  0.023239f, 0.009703f
 };
 
+float translucencySampleVariances[] = {
+  0.0064,
+  0.0484,
+  0.187,
+  0.567,
+  1.99,
+  7.41,
+};
+
+float translucencySampleWeights[] = {
+  0.233, 0.455, 0.649,
+  0.100, 0.336, 0.344,
+  0.118, 0.198, 0,
+  0.113, 0.007, 0.007,
+  0.358, 0.004, 0,
+  0.078, 0,     0,
+};
+
 struct model {
   std::vector<float> vertices;
   std::vector<GLuint> indices;
@@ -234,12 +252,12 @@ model loadModel(const std::string &filename) {
   for (int i = 0; i < scene->mMeshes[0]->mNumVertices; i++) {
     aiVector3D v = scene->mMeshes[0]->mVertices[i];
     aiVector3D n = scene->mMeshes[0]->mNormals[i];
-    result.vertices.push_back(v.x * 100);
-    result.vertices.push_back(v.y * 100);
-    result.vertices.push_back(v.z * 100);
-    result.vertices.push_back(n.x * 100);
-    result.vertices.push_back(n.y * 100);
-    result.vertices.push_back(n.z * 100);
+    result.vertices.push_back(v.x*100);
+    result.vertices.push_back(v.y*100);
+    result.vertices.push_back(v.z*100);
+    result.vertices.push_back(n.x);
+    result.vertices.push_back(n.y);
+    result.vertices.push_back(n.z);
   }
 
   for (int i = 0; i < scene->mMeshes[0]->mNumFaces; i++) {
@@ -420,7 +438,7 @@ int main() {
     bool freecam = false;
     int renderState = 2;
     float color[3] = { 0.7f, 0.4f, 0.4f };
-    glm::vec3 lightPos = glm::vec3(0.0f, 0.04f, -0.08f);
+    glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 0.03f);
     float transmittanceScale = 0.005f;
     float powBase = 2.718;
     float powFactor = 1;
@@ -556,8 +574,10 @@ int main() {
       1, GL_FALSE, glm::value_ptr(lightProj));
     glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "screenWidth"), window.getSize().x);
     glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "screenHeight"), window.getSize().y);
-    glUniform2fv(glGetUniformLocation(shaderProgramIrradiance, "samplePositions"), 13, samplePositions);
+    glUniform1fv(glGetUniformLocation(shaderProgramIrradiance, "samplePositions"), 13, samplePositions);
     glUniform3fv(glGetUniformLocation(shaderProgramIrradiance, "sampleWeights"), 13, sampleWeights);
+    glUniform2fv(glGetUniformLocation(shaderProgramIrradiance, "translucencySampleVariances"), 6, translucencySampleVariances);
+    glUniform3fv(glGetUniformLocation(shaderProgramIrradiance, "translucencySampleWeights"), 6, translucencySampleWeights);
 
     glUniform1f(
       glGetUniformLocation(shaderProgramIrradiance, "transmittanceScale"),
@@ -584,6 +604,7 @@ int main() {
     glUniform3fv(
       glGetUniformLocation(shaderProgramIrradiance, "viewPos"),
       1, glm::value_ptr(options.freecam ? freeCam.pos : arcCam.getPos()));
+      
       
     glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "shadowmapTexture"), 0);
     glActiveTexture(GL_TEXTURE0 + 0);

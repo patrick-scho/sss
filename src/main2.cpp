@@ -97,9 +97,11 @@ private:
                 indices.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(0));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 8, (void*)(0));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (void*)(sizeof(float) * 3));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 8, (void*)(sizeof(float) * 3));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 8, (void*)(sizeof(float) * 6));
 
     glBindVertexArray(0);
   }
@@ -224,22 +226,22 @@ model loadModel(const std::string &filename) {
 
   const aiScene *scene = importer.ReadFile(
       filename, aiProcess_CalcTangentSpace | aiProcess_Triangulate |
-                    aiProcess_SortByPType | aiProcess_GenSmoothNormals |
-                    aiProcess_GenUVCoords);
+                    aiProcess_SortByPType | aiProcess_GenSmoothNormals);
 
   model result;
-
-  printf("uv channels: %d\n", scene->mMeshes[0]->GetNumUVChannels());
 
   for (int i = 0; i < scene->mMeshes[0]->mNumVertices; i++) {
     aiVector3D v = scene->mMeshes[0]->mVertices[i];
     aiVector3D n = scene->mMeshes[0]->mNormals[i];
+    aiVector3D t = scene->mMeshes[0]->mTextureCoords[0][i];
     result.vertices.push_back(v.x * 100);
     result.vertices.push_back(v.y * 100);
     result.vertices.push_back(v.z * 100);
-    result.vertices.push_back(n.x * 100);
-    result.vertices.push_back(n.y * 100);
-    result.vertices.push_back(n.z * 100);
+    result.vertices.push_back(n.x);
+    result.vertices.push_back(n.y);
+    result.vertices.push_back(n.z);
+    result.vertices.push_back(t.x);
+    result.vertices.push_back(t.y);
   }
 
   for (int i = 0; i < scene->mMeshes[0]->mNumFaces; i++) {
@@ -391,8 +393,8 @@ int main() {
   if (glewInit() != GLEW_OK) {
   }
 
-  GLuint shaderProgramShadowmap = compileShaders("shaders/vert_shadowmap.glsl", "shaders/frag_shadowmap.glsl");
-  GLuint shaderProgramIrradiance = compileShaders("shaders/vert_irradiance.glsl", "shaders/frag_irradiance.glsl");
+  GLuint shaderProgramIrradiance = compileShaders("shaders/ts_vert_irradiance.glsl", "shaders/ts_frag_irradiance.glsl");
+  GLuint shaderProgramCombine = compileShaders("shaders/ts_vert.glsl", "shaders/ts_frag.glsl");
 
   //model m = loadModel("models/Isotrop-upperjaw.ply");
   model m = loadModel("models/african_head/african_head.obj");
@@ -418,9 +420,9 @@ int main() {
   const struct {
     bool wireframe = false;
     bool freecam = false;
-    int renderState = 2;
+    int renderState = 1;
     float color[3] = { 0.7f, 0.4f, 0.4f };
-    glm::vec3 lightPos = glm::vec3(0.0f, 0.04f, -0.08f);
+    glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 0.25f);
     float transmittanceScale = 0.005f;
     float powBase = 2.718;
     float powFactor = 1;
@@ -483,47 +485,6 @@ int main() {
 
     // Render Shadowmap
 
-    glClampColor(GL_CLAMP_READ_COLOR, GL_FALSE);
-    glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
-    glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, fb_shadowmap.fbo);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-
-    if (options.wireframe)
-      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    else
-      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-    glUseProgram(shaderProgramShadowmap);
-    
-    if (options.freecam)
-      view = freeCam.getViewMatrix();
-    else
-      view = arcCam.getViewMatrix();
-    
-    lightView = glm::lookAt(options.lightPos, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    
-    glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramShadowmap, "model"),
-      1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramShadowmap, "lightView"),
-      1, GL_FALSE, glm::value_ptr(lightView));
-    glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramShadowmap, "projection"),
-      1, GL_FALSE, glm::value_ptr(lightProj));
-
-    glUniform3fv(
-      glGetUniformLocation(shaderProgramShadowmap, "lightPos"),
-      1, glm::value_ptr(options.lightPos));
-
-    m.draw();
-
-    // Render irradiance
-
     glBindFramebuffer(GL_FRAMEBUFFER, fb_irradiance.fbo);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -536,6 +497,11 @@ int main() {
 
     glUseProgram(shaderProgramIrradiance);
     
+    if (options.freecam)
+      view = freeCam.getViewMatrix();
+    else
+      view = arcCam.getViewMatrix();
+    
     glUniformMatrix4fv(
       glGetUniformLocation(shaderProgramIrradiance, "model"),
       1, GL_FALSE, glm::value_ptr(model));
@@ -543,34 +509,8 @@ int main() {
       glGetUniformLocation(shaderProgramIrradiance, "view"),
       1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramIrradiance, "lightView"),
-      1, GL_FALSE, glm::value_ptr(lightView));
-    glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramIrradiance, "lightViewInv"),
-      1, GL_FALSE, glm::value_ptr(glm::inverse(lightView)));
-    glUniformMatrix4fv(
       glGetUniformLocation(shaderProgramIrradiance, "projection"),
       1, GL_FALSE, glm::value_ptr(proj));
-    glUniformMatrix4fv(
-      glGetUniformLocation(shaderProgramIrradiance, "lightProjection"),
-      1, GL_FALSE, glm::value_ptr(lightProj));
-    glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "screenWidth"), window.getSize().x);
-    glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "screenHeight"), window.getSize().y);
-    glUniform2fv(glGetUniformLocation(shaderProgramIrradiance, "samplePositions"), 13, samplePositions);
-    glUniform3fv(glGetUniformLocation(shaderProgramIrradiance, "sampleWeights"), 13, sampleWeights);
-
-    glUniform1f(
-      glGetUniformLocation(shaderProgramIrradiance, "transmittanceScale"),
-      options.transmittanceScale);
-    glUniform1i(
-      glGetUniformLocation(shaderProgramIrradiance, "renderState"),
-      options.renderState);
-    glUniform1f(
-      glGetUniformLocation(shaderProgramIrradiance, "powBase"),
-      options.powBase);
-    glUniform1f(
-      glGetUniformLocation(shaderProgramIrradiance, "powFactor"),
-      options.powFactor);
 
     glUniform3fv(
       glGetUniformLocation(shaderProgramIrradiance, "objectColor"),
@@ -584,38 +524,74 @@ int main() {
     glUniform3fv(
       glGetUniformLocation(shaderProgramIrradiance, "viewPos"),
       1, glm::value_ptr(options.freecam ? freeCam.pos : arcCam.getPos()));
-      
-    glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "shadowmapTexture"), 0);
-    glActiveTexture(GL_TEXTURE0 + 0);
-    glBindTexture(GL_TEXTURE_2D, fb_shadowmap.renderTexture);
 
     m.draw();
 
-    // Render fbo to screen
     
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    // Render fbo to screen
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDisable(GL_DEPTH_TEST);
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(fb_irradiance.screenShaderProgram);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
 
-    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "screenWidth"), window.getSize().x);
-    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "screenHeight"), window.getSize().y);
-    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "renderState"), options.renderState);
-    glUniform2fv(glGetUniformLocation(fb_irradiance.screenShaderProgram, "samplePositions"), 13, samplePositions);
-    glUniform3fv(glGetUniformLocation(fb_irradiance.screenShaderProgram, "sampleWeights"), 13, sampleWeights);
+    if (options.wireframe)
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else
+      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    glBindVertexArray(fb_irradiance.screenVAO);
-    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "shadowmapTexture"), 0);
-    glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "irradianceTexture"), 1);
+    glUseProgram(shaderProgramCombine);
+    
+    if (options.freecam)
+      view = freeCam.getViewMatrix();
+    else
+      view = arcCam.getViewMatrix();
+    
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramCombine, "model"),
+      1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramCombine, "view"),
+      1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(
+      glGetUniformLocation(shaderProgramCombine, "projection"),
+      1, GL_FALSE, glm::value_ptr(proj));
+
+    glUniform3fv(
+      glGetUniformLocation(shaderProgramCombine, "objectColor"),
+      1, options.color);
+    glUniform3f(
+      glGetUniformLocation(shaderProgramCombine, "lightColor"),
+      1.0f, 1.0f, 1.0f);
+    glUniform3fv(
+      glGetUniformLocation(shaderProgramCombine, "lightPos"),
+      1, glm::value_ptr(options.lightPos));
+    glUniform3fv(
+      glGetUniformLocation(shaderProgramCombine, "viewPos"),
+      1, glm::value_ptr(options.freecam ? freeCam.pos : arcCam.getPos()));
+
+    glUniform1i(glGetUniformLocation(shaderProgramCombine, "screenWidth"), window.getSize().x);
+    glUniform1i(glGetUniformLocation(shaderProgramCombine, "screenHeight"), window.getSize().y);
+    glUniform1i(glGetUniformLocation(shaderProgramCombine, "renderState"), options.renderState);
+    glUniform2fv(glGetUniformLocation(shaderProgramCombine, "samplePositions"), 13, samplePositions);
+    glUniform3fv(glGetUniformLocation(shaderProgramCombine, "sampleWeights"), 13, sampleWeights);
+    glUniform1f(glGetUniformLocation(shaderProgramCombine, "transmittanceScale"), options.transmittanceScale);
+      
+    glUniform1i(glGetUniformLocation(shaderProgramCombine, "irradianceTexture"), 0);
     glActiveTexture(GL_TEXTURE0 + 0);
-    glBindTexture(GL_TEXTURE_2D, fb_shadowmap.renderTexture);
-    glActiveTexture(GL_TEXTURE0 + 1);
     glBindTexture(GL_TEXTURE_2D, fb_irradiance.renderTexture);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
+
+    // glBindVertexArray(fb_irradiance.screenVAO);
+    // glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "shadowmapTexture"), 0);
+    // glActiveTexture(GL_TEXTURE0 + 0);
+    // glBindTexture(GL_TEXTURE_2D, fb_irradiance.renderTexture);
+    // glDrawArrays(GL_TRIANGLES, 0, 6);
+    // glBindVertexArray(0);
+
+    m.draw();
+
+
 
     ImGui::SFML::Update(window, deltaClock.restart());
 

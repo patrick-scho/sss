@@ -17,6 +17,9 @@ uniform int renderState;
 uniform float powBase;
 uniform float powFactor;
 
+uniform float translucencySampleVariances[6];
+uniform vec3 translucencySampleWeights[6];
+
 void main()
 {
   vec3 norm = normalize(Normal);
@@ -39,10 +42,18 @@ void main()
   //distanceToBackside = distance(Backside, LocalPos);
   vec3 result = (ambient + diffuse + specular) * objectColor;
 
-  if (renderState == 3)
-    if (distanceToBackside != 0)
-      //result += objectColor * pow(powBase, -pow(distanceToBackside, 2)) * transmittanceScale * (1 - diff);
+  if (renderState == 3) {
+    if (distanceToBackside != 0) {
       result += objectColor * pow(powBase, powFactor / pow(distanceToBackside, 0.6)) * transmittanceScale * (1 - diff);
+      // vec3 translucency = vec3(0);
+      // for (int i = 0; i < 6; i++) {
+      //   translucency += objectColor * translucencySampleWeights[i] * exp(-pow(distanceToBackside, 2.0) / translucencySampleVariances[i]);
+      // }
+
+      // result += translucency * transmittanceScale;
+    }
+  }
+      //result += objectColor * pow(powBase, -pow(distanceToBackside, 2)) * transmittanceScale * (1 - diff);
   // if (renderState == 3) {
   //   //result = Backside;
   //   //result = LocalPos;

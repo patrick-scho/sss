@@ -69,9 +69,9 @@ void main()
   vec4 t = texture(shadowmapTexture, shadowmapCoords);
   //vec4 t = blur(shadowmapTexture, shadowmapCoords, vec2(screenWidth, screenHeight));
 
-  BacksideIrradiance = t.r + t.g*10 + t.b*100;
+  BacksideIrradiance = t.r; //*100 + t.g + t.b/100;
   
-  vec3 lightDir = (vec3(0, 0, 0) - lightPos);
+  vec3 lightDir = normalize(FragPos - lightPos);
   Backside = (lightPos + (lightDir * BacksideIrradiance));
   //Backside = texture(shadowmapTexture, shadowmapCoords).xyz*10;
 }
