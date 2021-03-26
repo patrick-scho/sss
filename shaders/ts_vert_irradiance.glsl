@@ -13,7 +13,9 @@ uniform mat4 projection;
 
 void main()
 {
-  FragPos = vec3(model * vec4(pos, 1.0));
+  // lay out the model in the XY-plane according to it's UV coordinates
   gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+  // pass fragment position in world coordinates
+  FragPos = vec3(model * vec4(pos, 1.0));
   Normal = normal;
 }

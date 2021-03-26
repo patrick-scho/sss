@@ -20,18 +20,9 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-/*
 
-TODO:
-- Save Depth to fbo
-- Stencil Buffer
-- LightDist > 1
-  - 1 - distanceToBackside in frag_irradiance
-- ShadowMap Perspective (no projection?)
-- (Implement Gaussian Blur)
-- LightDir nicht immer zu 0 0 0
-
-*/
+// sample positions and weights for a Gaussian kernel from 
+// Hable, John ; Borshukov, George ; Hejl, Jim: Fast Skin Shading. In: ShaderX7, ShaderX : Charles River Media, 2009, S. 161–173
 
 float samplePositions[] = {
   0.000000f,  0.000000f,

@@ -20,6 +20,10 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+
+// sample positions and weights for a Gaussian kernel from 
+// Hable, John ; Borshukov, George ; Hejl, Jim: Fast Skin Shading. In: ShaderX7, ShaderX : Charles River Media, 2009, S. 161–173
+
 float samplePositions[] = {
   0.000000f,  0.000000f,
   1.633992f,  0.036795f,
@@ -383,7 +387,6 @@ int main() {
   GLuint shaderProgramIrradiance = compileShaders("shaders/ts_vert_irradiance.glsl", "shaders/ts_frag_irradiance.glsl");
   GLuint shaderProgramCombine = compileShaders("shaders/ts_vert.glsl", "shaders/ts_frag.glsl");
 
-  //model m = loadModel("models/Isotrop-upperjaw.ply");
   model m = loadModel("models/african_head/african_head.obj");
 
   arccam arcCam;
@@ -470,7 +473,7 @@ int main() {
 
     prevMouse = sf::Mouse::isButtonPressed(sf::Mouse::Right);
 
-    // Render Shadowmap
+    // Render Shadowmap to fbo
 
     glBindFramebuffer(GL_FRAMEBUFFER, fb_irradiance.fbo);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -514,9 +517,7 @@ int main() {
 
     m.draw();
 
-    
-
-    // Render fbo to screen
+    // Render model and calculate light spread and translucency in shader
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -569,16 +570,9 @@ int main() {
     glActiveTexture(GL_TEXTURE0 + 0);
     glBindTexture(GL_TEXTURE_2D, fb_irradiance.renderTexture);
 
-    // glBindVertexArray(fb_irradiance.screenVAO);
-    // glUniform1i(glGetUniformLocation(fb_irradiance.screenShaderProgram, "shadowmapTexture"), 0);
-    // glActiveTexture(GL_TEXTURE0 + 0);
-    // glBindTexture(GL_TEXTURE_2D, fb_irradiance.renderTexture);
-    // glDrawArrays(GL_TRIANGLES, 0, 6);
-    // glBindVertexArray(0);
-
     m.draw();
 
-
+    // menu
 
     ImGui::SFML::Update(window, deltaClock.restart());
 
