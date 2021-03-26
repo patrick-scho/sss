@@ -412,10 +412,10 @@ int main() {
     bool freecam = false;
     int renderState = 1;
     float color[3] = { 0.7f, 0.4f, 0.4f };
-    glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 0.25f);
+    glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 2.5f);
     float transmittanceScale = 0.005f;
-    float powBase = 2.718;
-    float powFactor = 1;
+    float powBase = 2;
+    float powFactor = 1.5;
   } DefaultOptions;
 
   auto options = DefaultOptions;
@@ -581,8 +581,6 @@ int main() {
     ImGui::Checkbox("Free Cam", &options.freecam);
     ImGui::DragFloat3("Color", options.color, 0.01, 0, 1);
     ImGui::DragFloat("Transmittance Scale", &options.transmittanceScale, 0.0001f, 0, 0.3);
-    ImGui::DragFloat("Pow Base", &options.powBase, 0.01f, 0, 4);
-    ImGui::DragFloat("Pow Factor", &options.powFactor, 0.01f, 0, 3);
     ImGui::DragFloat3("Light Pos", glm::value_ptr(options.lightPos), 0.01, -5, 5);
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);
