@@ -14,6 +14,7 @@ uniform mat4 projection;
 void main()
 {
   gl_Position = projection * lightView * model * vec4(pos, 1.0);
+  // pass fragment position in world coordinates
   FragPos = vec3(model * vec4(pos, 1));
   LocalPos = pos;
   Normal = normal;

@@ -65,24 +65,6 @@ float sampleWeights[] = {
   0.073580f,  0.023239f, 0.009703f
 };
 
-float translucencySampleVariances[] = {
-  0.0064,
-  0.0484,
-  0.187,
-  0.567,
-  1.99,
-  7.41,
-};
-
-float translucencySampleWeights[] = {
-  0.233, 0.455, 0.649,
-  0.100, 0.336, 0.344,
-  0.118, 0.198, 0,
-  0.113, 0.007, 0.007,
-  0.358, 0.004, 0,
-  0.078, 0,     0,
-};
-
 struct model {
   std::vector<float> vertices;
   std::vector<GLuint> indices;
@@ -252,9 +234,9 @@ model loadModel(const std::string &filename) {
   for (int i = 0; i < scene->mMeshes[0]->mNumVertices; i++) {
     aiVector3D v = scene->mMeshes[0]->mVertices[i];
     aiVector3D n = scene->mMeshes[0]->mNormals[i];
-    result.vertices.push_back(v.x*100);
-    result.vertices.push_back(v.y*100);
-    result.vertices.push_back(v.z*100);
+    result.vertices.push_back(v.x);
+    result.vertices.push_back(v.y);
+    result.vertices.push_back(v.z);
     result.vertices.push_back(n.x);
     result.vertices.push_back(n.y);
     result.vertices.push_back(n.z);
@@ -412,9 +394,8 @@ int main() {
   GLuint shaderProgramShadowmap = compileShaders("shaders/vert_shadowmap.glsl", "shaders/frag_shadowmap.glsl");
   GLuint shaderProgramIrradiance = compileShaders("shaders/vert_irradiance.glsl", "shaders/frag_irradiance.glsl");
 
-  //model m = loadModel("models/Isotrop-upperjaw.ply");
-  model m = loadModel("models/african_head/african_head.obj");
-
+  model m = loadModel("models/Isotrop-upperjaw.ply");
+  
   arccam arcCam;
   freecam freeCam;
 
@@ -428,6 +409,7 @@ int main() {
   glm::mat4 lightProj = glm::perspective(glm::radians(90.0f), (float)window.getSize().x / window.getSize().y, 0.001f, 1000.0f);
 
   // Framebuffer
+
   framebuffer fb_shadowmap("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl", width, height);
   framebuffer fb_irradiance("shaders/fbo_vert.glsl", "shaders/fbo_frag.glsl", width, height);
 
@@ -439,9 +421,9 @@ int main() {
     int renderState = 2;
     float color[3] = { 0.7f, 0.4f, 0.4f };
     glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 0.03f);
-    float transmittanceScale = 0.005f;
-    float powBase = 2.718;
-    float powFactor = 1;
+    float transmittanceScale = 0.025f;
+    float powBase = 2;
+    float powFactor = 1.5;
   } DefaultOptions;
 
   auto options = DefaultOptions;
@@ -476,7 +458,7 @@ int main() {
       }
     }
 
-    // Update
+    // Update Camera
 
     if (sf::Mouse::isButtonPressed(sf::Mouse::Right)) {
       window.setMouseCursorVisible(false);
@@ -499,7 +481,7 @@ int main() {
 
     prevMouse = sf::Mouse::isButtonPressed(sf::Mouse::Right);
 
-    // Render Shadowmap
+    // Render Shadowmap to fbo
 
     glClampColor(GL_CLAMP_READ_COLOR, GL_FALSE);
     glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
@@ -540,7 +522,7 @@ int main() {
 
     m.draw();
 
-    // Render irradiance
+    // Render irradiance map to fbo
 
     glBindFramebuffer(GL_FRAMEBUFFER, fb_irradiance.fbo);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -576,8 +558,6 @@ int main() {
     glUniform1i(glGetUniformLocation(shaderProgramIrradiance, "screenHeight"), window.getSize().y);
     glUniform1fv(glGetUniformLocation(shaderProgramIrradiance, "samplePositions"), 13, samplePositions);
     glUniform3fv(glGetUniformLocation(shaderProgramIrradiance, "sampleWeights"), 13, sampleWeights);
-    glUniform2fv(glGetUniformLocation(shaderProgramIrradiance, "translucencySampleVariances"), 6, translucencySampleVariances);
-    glUniform3fv(glGetUniformLocation(shaderProgramIrradiance, "translucencySampleWeights"), 6, translucencySampleWeights);
 
     glUniform1f(
       glGetUniformLocation(shaderProgramIrradiance, "transmittanceScale"),
@@ -612,7 +592,7 @@ int main() {
 
     m.draw();
 
-    // Render fbo to screen
+    // Render fbos to screen and calculate light spread/translucency in shader
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -638,6 +618,8 @@ int main() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
+    // menu
+
     ImGui::SFML::Update(window, deltaClock.restart());
 
     ImGui::Begin("Options");
@@ -646,8 +628,6 @@ int main() {
     ImGui::InputInt("Render State", &options.renderState);
     ImGui::DragFloat3("Color", options.color, 0.01, 0, 1);
     ImGui::DragFloat("Transmittance Scale", &options.transmittanceScale, 0.0001f, 0, 0.3);
-    ImGui::DragFloat("Pow Base", &options.powBase, 0.01f, 0, 4);
-    ImGui::DragFloat("Pow Factor", &options.powFactor, 0.01f, 0, 3);
     ImGui::DragFloat3("Light Pos", glm::value_ptr(options.lightPos), 0.01, -5, 5);
     if (options.freecam) {
       ImGui::LabelText("Position", "%f %f %f", freeCam.pos.x, freeCam.pos.y, freeCam.pos.z);

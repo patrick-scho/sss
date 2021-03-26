@@ -17,11 +17,9 @@ uniform int renderState;
 uniform float powBase;
 uniform float powFactor;
 
-uniform float translucencySampleVariances[6];
-uniform vec3 translucencySampleWeights[6];
-
 void main()
 {
+  // phong lighting
   vec3 norm = normalize(Normal);
   vec3 lightDir = normalize(lightPos - FragPos);
 
@@ -37,30 +35,20 @@ void main()
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
   vec3 specular = specularStrength * spec * lightColor;
 
-  //float distanceToBackside = length(clamp(FragPos - Backside, vec3(0), vec3(1000)));
-  float distanceToBackside = length(FragPos - Backside);
-  //distanceToBackside = distance(Backside, LocalPos);
   vec3 result = (ambient + diffuse + specular) * objectColor;
 
-  if (renderState == 3) {
-    if (distanceToBackside != 0) {
-      result += objectColor * pow(powBase, powFactor / pow(distanceToBackside, 0.6)) * transmittanceScale * (1 - diff);
-      // vec3 translucency = vec3(0);
-      // for (int i = 0; i < 6; i++) {
-      //   translucency += objectColor * translucencySampleWeights[i] * exp(-pow(distanceToBackside, 2.0) / translucencySampleVariances[i]);
-      // }
+  // thickness
+  float distanceToBackside = length(FragPos - Backside);
 
-      // result += translucency * transmittanceScale;
+  if (renderState == 2) {
+    if (distanceToBackside != 0) {
+      // add translucency by amplifying color inverse to the thickness
+      // (1 - diff) is part of the irradiance term,
+      // if the light hits the object straight at 90°
+      // most light is received
+      result += objectColor * pow(powBase, powFactor / pow(distanceToBackside, 0.6)) * transmittanceScale * (1 - diff);
     }
   }
-      //result += objectColor * pow(powBase, -pow(distanceToBackside, 2)) * transmittanceScale * (1 - diff);
-  // if (renderState == 3) {
-  //   //result = Backside;
-  //   //result = LocalPos;
-  //   result = vec3(distanceToBackside);
-  // }
-
     
   FragColor = vec4(result, 1.0f);
-  //FragColor = vec4(vec3(distanceToBackside), 1);
 }

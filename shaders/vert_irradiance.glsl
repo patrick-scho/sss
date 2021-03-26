@@ -23,55 +23,37 @@ uniform mat4 lightViewInv;
 uniform mat4 projection;
 uniform mat4 lightProjection;
 
-vec4 blur(sampler2D tex, vec2 uv, vec2 res) {
-  float Pi = 6.28318530718; // Pi*2
-    
-  // GAUSSIAN BLUR SETTINGS {{{
-  float Directions = 16.0; // BLUR DIRECTIONS (Default 16.0 - More is better but slower)
-  float Quality = 4.0; // BLUR QUALITY (Default 4.0 - More is better but slower)
-  float Size = 8.0; // BLUR SIZE (Radius)
-  // GAUSSIAN BLUR SETTINGS }}}
-  
-  vec2 Radius = Size/res;
-  
-  // Pixel colour
-  vec4 Color = texture(tex, uv);
-  
-  // Blur calculations
-  for( float d=0.0; d<Pi; d+=Pi/Directions) {
-    for(float i=1.0/Quality; i<=1.0; i+=1.0/Quality) {
-      Color += texture( tex, uv+vec2(cos(d),sin(d))*Radius*i);		
-    }
-  }
-  
-  // Output to screen
-  Color /= Quality * Directions - 15.0;
-  return Color;
-}
-
 void main()
 {
   gl_Position = projection * view * model * vec4(pos, 1.0);
+  // calculate fragment position in world coordinates
   FragPos = vec3(model * vec4(pos, 1));
+  // and local coordinates
   LocalPos = pos;
+
   Normal = normal;
   
+  // get fragment position in the light's projection space
   vec4 lightSpace = lightProjection * lightView * model * vec4(pos, 1.0);
+  // and transform them to 2D coordinates
+  // (this is usually done by OpenGL after applying the vertex shader,
+  // so to get them here, we have to divide by w manually)
   lightSpace = lightSpace / lightSpace.w;
   vec2 shadowmapCoords = lightSpace.xy;
+  // map coordinates from [0 1] to [-1 +1]
+  // multiply by 0.99 first to shift coordinates towards the center slightly
+  // to prevent artifacts at the edges
   shadowmapCoords = vec2(
     (shadowmapCoords.x * 0.99 + 1) / 2,
     (shadowmapCoords.y * 0.99 + 1) / 2
   );
 
-
-  // blur
+  // sample shadowmap (brightness encodes distance of fragment to light)
   vec4 t = texture(shadowmapTexture, shadowmapCoords);
-  //vec4 t = blur(shadowmapTexture, shadowmapCoords, vec2(screenWidth, screenHeight));
 
-  BacksideIrradiance = t.r; //*100 + t.g + t.b/100;
+  BacksideIrradiance = t.r;
   
+  // calculate backside with distance(BacksideIrradiance) and lightDir
   vec3 lightDir = normalize(FragPos - lightPos);
   Backside = (lightPos + (lightDir * BacksideIrradiance));
-  //Backside = texture(shadowmapTexture, shadowmapCoords).xyz*10;
 }
