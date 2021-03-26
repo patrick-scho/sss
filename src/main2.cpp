@@ -579,7 +579,6 @@ int main() {
     ImGui::Begin("Options");
     ImGui::Checkbox("Wireframe", &options.wireframe);
     ImGui::Checkbox("Free Cam", &options.freecam);
-    ImGui::InputInt("Render State", &options.renderState);
     ImGui::DragFloat3("Color", options.color, 0.01, 0, 1);
     ImGui::DragFloat("Transmittance Scale", &options.transmittanceScale, 0.0001f, 0, 0.3);
     ImGui::DragFloat("Pow Base", &options.powBase, 0.01f, 0, 4);

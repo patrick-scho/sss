@@ -40,14 +40,12 @@ void main()
   // thickness
   float distanceToBackside = length(FragPos - Backside);
 
-  if (renderState == 2) {
-    if (distanceToBackside != 0) {
-      // add translucency by amplifying color inverse to the thickness
-      // (1 - diff) is part of the irradiance term,
-      // if the light hits the object straight at 90°
-      // most light is received
-      result += objectColor * pow(powBase, powFactor / pow(distanceToBackside, 0.6)) * transmittanceScale * (1 - diff);
-    }
+  if (distanceToBackside != 0) {
+    // add translucency by amplifying color inverse to the thickness
+    // (1 - diff) is part of the irradiance term,
+    // if the light hits the object straight at 90°
+    // most light is received
+    result += objectColor * pow(powBase, powFactor / pow(distanceToBackside, 0.6)) * transmittanceScale * (1 - diff);
   }
     
   FragColor = vec4(result, 1.0f);
